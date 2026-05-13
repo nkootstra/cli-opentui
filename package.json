@@ -1,0 +1,23 @@
+{
+  "name": "cli-monorepo",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "bun --watch apps/cli/src/index.tsx",
+    "format": "oxfmt",
+    "format:check": "oxfmt --check",
+    "lint": "oxlint .",
+    "lint:fix": "oxlint --fix .",
+    "test": "bun test",
+    "build": "bun run --filter @repo/cli build",
+    "typecheck": "bun run --filter @repo/cli typecheck"
+  },
+  "devDependencies": {
+    "oxfmt": "^0.49.0",
+    "oxlint": "^1.64.0",
+    "typescript": "^6.0.3"
+  }
+}
