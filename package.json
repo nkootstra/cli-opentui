@@ -11,6 +11,8 @@
     "format:check": "oxfmt --check",
     "lint": "oxlint .",
     "lint:fix": "oxlint --fix .",
+    "test": "bun test",
+    "build": "bun run --filter @repo/cli build",
     "typecheck": "bun run --filter @repo/cli typecheck"
   },
   "devDependencies": {
