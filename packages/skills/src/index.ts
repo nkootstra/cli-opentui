@@ -4,6 +4,7 @@ import {
   mkdir,
   readFile,
   readdir,
+  readlink,
   rename,
   rm,
   symlink,
@@ -605,14 +606,35 @@ export async function listInstalledSkills(options: {
       scope === "global"
         ? resolveClaudeHome(options.claudeHome)
         : join(resolve(process.cwd()), ".agents");
+    const agentsHome = resolveAgentsHome(claudeHome);
     const lockfile = await readLockfile(claudeHome);
+
+    // Lockfile is the primary source of truth
+    const seen = new Set<string>();
     for (const entry of Object.values(lockfile.skills)) {
+      seen.add(entry.destinationName);
       results.push({
         destinationName: entry.destinationName,
         displayName: entry.displayName,
         source: `${entry.sourceHost}/${entry.owner}/${entry.repo}`,
         requestedRef: entry.requestedRef,
         installedAt: entry.installedAt,
+        scope,
+      });
+    }
+
+    // Filesystem fallback: pick up skills present on disk but missing from lockfile
+    const skillsDir = join(agentsHome, "skills");
+    for (const name of await safeReadDir(skillsDir)) {
+      if (seen.has(name)) continue;
+      const skillPath = join(skillsDir, name);
+      if (!(await isDirectory(skillPath))) continue;
+      results.push({
+        destinationName: name,
+        displayName: name,
+        source: "unknown",
+        requestedRef: null,
+        installedAt: "unknown",
         scope,
       });
     }
@@ -639,12 +661,13 @@ export async function removeSkill(
   validateDestinationName(name);
 
   const lockfile = await readLockfile(agentsHome);
-  if (!lockfile.skills[name]) {
-    throw new Error(`Skill '${name}' is not installed in ${scope} skills.`);
-  }
 
   const agentsSkillPath = join(agentsHome, "skills", name);
   const claudeSymlinkPath = join(claudeSkillsHome, "skills", name);
+
+  if (!lockfile.skills[name] && !(await pathExists(agentsSkillPath))) {
+    throw new Error(`Skill '${name}' is not installed in ${scope} skills.`);
+  }
 
   await rm(agentsSkillPath, { force: true, recursive: true });
   if (await pathExists(claudeSymlinkPath)) {
@@ -652,12 +675,176 @@ export async function removeSkill(
     if (stats.isSymbolicLink()) await rm(claudeSymlinkPath, { force: true });
   }
 
-  delete lockfile.skills[name];
-  await writeLockfile(agentsHome, lockfile);
+  if (lockfile.skills[name]) {
+    delete lockfile.skills[name];
+    await writeLockfile(agentsHome, lockfile);
+  }
 
   return { removed: name, scope };
 }
 
 export async function extractArchivePlaceholder(): Promise<string> {
   return tmpdir();
+}
+
+// ── Doctor ────────────────────────────────────────────────────────────────────
+
+export type DoctorIssueKind =
+  | "missing_agents_dir"
+  | "missing_claude_dir"
+  | "missing_claude_symlink"
+  | "broken_claude_symlink"
+  | "orphaned_lockfile_entry"
+  | "lockfile_corrupt";
+
+export type DoctorIssue = {
+  kind: DoctorIssueKind;
+  message: string;
+  skillName?: string;
+  path?: string;
+};
+
+export type DoctorResult = {
+  agentsHome: string;
+  claudeHome: string;
+  issues: DoctorIssue[];
+};
+
+export async function runDoctor(options: { claudeHome?: string } = {}): Promise<DoctorResult> {
+  const globalClaudeHome = resolveClaudeHome(options.claudeHome);
+  const agentsHome = resolveAgentsHome(globalClaudeHome);
+  const claudeHome = globalClaudeHome;
+  const issues: DoctorIssue[] = [];
+
+  // Check top-level dirs exist
+  if (!(await pathExists(agentsHome))) {
+    issues.push({
+      kind: "missing_agents_dir",
+      message: `Skills directory does not exist: ${agentsHome}`,
+      path: agentsHome,
+    });
+    return { agentsHome, claudeHome, issues };
+  }
+  if (!(await pathExists(claudeHome))) {
+    issues.push({
+      kind: "missing_claude_dir",
+      message: `Claude home directory does not exist: ${claudeHome}`,
+      path: claudeHome,
+    });
+  }
+
+  // Read lockfile
+  let lockfile: Lockfile;
+  try {
+    lockfile = await readLockfile(agentsHome);
+  } catch {
+    issues.push({
+      kind: "lockfile_corrupt",
+      message: `Lockfile is missing or corrupt at ${lockfilePath(agentsHome)}`,
+      path: lockfilePath(agentsHome),
+    });
+    lockfile = { version: 1, skills: {} };
+  }
+
+  const agentsSkillsDir = join(agentsHome, "skills");
+  const claudeSkillsDir = join(claudeHome, "skills");
+
+  // For each lockfile entry: verify agents dir and claude symlink exist and are valid
+  for (const [name] of Object.entries(lockfile.skills)) {
+    const agentsPath = join(agentsSkillsDir, name);
+    const claudePath = join(claudeSkillsDir, name);
+
+    if (!(await pathExists(agentsPath))) {
+      issues.push({
+        kind: "orphaned_lockfile_entry",
+        message: `Lockfile references '${name}' but skill directory is missing at ${agentsPath}`,
+        skillName: name,
+        path: agentsPath,
+      });
+    }
+
+    if (!(await pathExists(claudePath))) {
+      // Symlink entirely missing
+      if (await pathExists(agentsPath)) {
+        issues.push({
+          kind: "missing_claude_symlink",
+          message: `Skill '${name}' has no symlink in ${claudeSkillsDir}`,
+          skillName: name,
+          path: claudePath,
+        });
+      }
+    } else {
+      // Path exists — check it's a valid symlink pointing to the right place
+      try {
+        const stat = await lstat(claudePath);
+        if (!stat.isSymbolicLink()) {
+          issues.push({
+            kind: "broken_claude_symlink",
+            message: `Skill '${name}' in ${claudeSkillsDir} is not a symlink (found real file/dir)`,
+            skillName: name,
+            path: claudePath,
+          });
+        } else {
+          const target = await readlink(claudePath);
+          const resolvedTarget = resolve(claudeSkillsDir, target);
+          if (resolvedTarget !== resolve(agentsPath)) {
+            issues.push({
+              kind: "broken_claude_symlink",
+              message: `Skill '${name}' symlink points to wrong target: ${target}`,
+              skillName: name,
+              path: claudePath,
+            });
+          }
+        }
+      } catch {
+        issues.push({
+          kind: "broken_claude_symlink",
+          message: `Skill '${name}' symlink in ${claudeSkillsDir} is broken`,
+          skillName: name,
+          path: claudePath,
+        });
+      }
+    }
+  }
+
+  return { agentsHome, claudeHome, issues };
+}
+
+// ── Applications ──────────────────────────────────────────────────────────────
+
+export type AppSkillStatus = "active" | "missing" | "not_configured";
+
+export type KnownApplication = {
+  name: string;
+  description: string;
+  skillsDir: string;
+  status: AppSkillStatus;
+  skillCount: number;
+};
+
+const KNOWN_APPS: Array<{ name: string; description: string; skillsDir: string }> = [
+  {
+    name: "OpenCode",
+    description: "AI coding agent (opencode.ai)",
+    skillsDir: join(homedir(), ".config", "opencode", "skills"),
+  },
+  {
+    name: "Claude Code",
+    description: "Anthropic Claude Code CLI",
+    skillsDir: join(homedir(), ".claude", "skills"),
+  },
+];
+
+export async function listApplications(): Promise<KnownApplication[]> {
+  return Promise.all(
+    KNOWN_APPS.map(async (app) => {
+      if (!(await pathExists(app.skillsDir))) {
+        const parentExists = await pathExists(dirname(app.skillsDir));
+        return { ...app, status: parentExists ? "missing" : "not_configured", skillCount: 0 } as KnownApplication;
+      }
+      const entries = await safeReadDir(app.skillsDir);
+      const isDirs = await Promise.all(entries.map((e) => isDirectory(join(app.skillsDir, e))));
+      return { ...app, status: "active", skillCount: isDirs.filter(Boolean).length } as KnownApplication;
+    }),
+  );
 }
