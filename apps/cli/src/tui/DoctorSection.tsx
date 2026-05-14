@@ -52,7 +52,7 @@ export function DoctorSection() {
     <box flexDirection="column" flexGrow={1} style={{ padding: 2 }}>
       {/* Header */}
       <box flexDirection="column" style={{ marginBottom: 1 }}>
-        <text fg="#a78bfa" attributes={1}>
+        <text fg="#ff8000" attributes={1}>
           Doctor
         </text>
         {healthy ? (

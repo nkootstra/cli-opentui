@@ -27,14 +27,14 @@ export function TabBar({ tabs, activeIndex, hint, onTabClick }: TabBarProps) {
             style={{
               paddingLeft: 2,
               paddingRight: 2,
-              backgroundColor: isActive ? "#1e1b4b" : isHovered ? "#111827" : undefined,
+              backgroundColor: isActive ? "#3a1a00" : isHovered ? "#111827" : undefined,
             }}
             onMouseDown={onTabClick ? () => onTabClick(i) : undefined}
             onMouseOver={onTabClick ? () => setHoveredIndex(i) : undefined}
             onMouseOut={onTabClick ? () => setHoveredIndex(null) : undefined}
           >
             <text
-              fg={isActive ? "#a78bfa" : isHovered ? "#9ca3af" : "#4b5563"}
+              fg={isActive ? "#ff8000" : isHovered ? "#9ca3af" : "#4b5563"}
               attributes={isActive ? 1 : 0}
             >
               {tab}
