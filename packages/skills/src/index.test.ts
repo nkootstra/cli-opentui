@@ -524,6 +524,51 @@ describe("listInstalledSkills", () => {
     expect(skills[0]?.scope).toBe("global");
     expect(skills[0]?.source).toBe("github.com/owner/repo");
   });
+
+  test("returns skills found on disk but missing from lockfile (filesystem fallback)", async () => {
+    const tmp = await Bun.$`mktemp -d`.text().then((s) => s.trim());
+    const agentsHome = join(tmp, ".agents");
+    // Create a skill directory on disk with no lockfile entry
+    await mkdir(join(agentsHome, "skills", "orphan"), { recursive: true });
+    await writeFile(join(agentsHome, "skills", "orphan", "SKILL.md"), "# orphan");
+
+    const skills = await listInstalledSkills({ claudeHome: agentsHome, scope: "global" });
+    expect(skills).toHaveLength(1);
+    expect(skills[0]?.destinationName).toBe("orphan");
+    expect(skills[0]?.source).toBe("unknown");
+    expect(skills[0]?.scope).toBe("global");
+  });
+
+  test("does not duplicate skills present in both lockfile and filesystem", async () => {
+    const tmp = await Bun.$`mktemp -d`.text().then((s) => s.trim());
+    const agentsHome = join(tmp, ".agents");
+    await mkdir(join(agentsHome, "skills", "foo"), { recursive: true });
+    await writeFile(join(agentsHome, "skills", "foo", "SKILL.md"), "# foo");
+    await writeFile(
+      join(agentsHome, "skills-lock.json"),
+      JSON.stringify({
+        version: 1,
+        skills: {
+          foo: {
+            sourceHost: "github.com",
+            owner: "owner",
+            repo: "repo",
+            requestedRef: null,
+            resolvedCommit: null,
+            sourceSkillPath: "skills/foo",
+            displayName: "foo",
+            destinationName: "foo",
+            installedAt: "2026-05-13T00:00:00.000Z",
+          },
+        },
+      }),
+    );
+
+    const skills = await listInstalledSkills({ claudeHome: agentsHome, scope: "global" });
+    expect(skills).toHaveLength(1);
+    expect(skills[0]?.destinationName).toBe("foo");
+    expect(skills[0]?.source).toBe("github.com/owner/repo");
+  });
 });
 
 describe("removeSkill", () => {
@@ -585,7 +630,7 @@ describe("removeSkill", () => {
     expect(symlinkExists).toBe(false);
   });
 
-  test("throws when skill is not in lockfile", async () => {
+  test("throws when skill is not in lockfile and not on disk", async () => {
     const tmp = await Bun.$`mktemp -d`.text().then((s) => s.trim());
     const agentsHome = join(tmp, ".agents");
     await mkdir(agentsHome, { recursive: true });
@@ -593,5 +638,18 @@ describe("removeSkill", () => {
     await expect(
       removeSkill("missing", { claudeHome: agentsHome, scope: "global" }),
     ).rejects.toThrow("not installed");
+  });
+
+  test("removes skill that exists on disk but has no lockfile entry", async () => {
+    const tmp = await Bun.$`mktemp -d`.text().then((s) => s.trim());
+    const agentsHome = join(tmp, ".agents");
+    await mkdir(join(agentsHome, "skills", "orphan"), { recursive: true });
+    await writeFile(join(agentsHome, "skills", "orphan", "SKILL.md"), "# orphan");
+
+    const result = await removeSkill("orphan", { claudeHome: agentsHome, scope: "global" });
+    expect(result.removed).toBe("orphan");
+
+    const stillExists = await Bun.file(join(agentsHome, "skills", "orphan", "SKILL.md")).exists();
+    expect(stillExists).toBe(false);
   });
 });
