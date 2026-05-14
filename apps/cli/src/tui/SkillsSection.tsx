@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
 import {
   buildInstallPlan,
@@ -94,7 +94,7 @@ export function SkillsSection({ active }: SkillsSectionProps) {
     void reload();
   }, [reload]);
 
-  const currentSkills = repos[repoIndex]?.skills ?? [];
+  const currentSkills = useMemo(() => repos[repoIndex]?.skills ?? [], [repos, repoIndex]);
 
   const activeNames = useCallback(
     (skills: SkillEntry[], sel: Set<string>, cur: number): string[] => {
