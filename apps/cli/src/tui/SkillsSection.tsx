@@ -236,7 +236,16 @@ export function SkillsSection({ active, onSkillsChanged }: SkillsSectionProps) {
       setSelected(new Set());
       setStatus({ type: "ready", notice: err instanceof Error ? err.message : String(err) });
     }
-  }, [isLocalTab, doLocalRemove, currentSkills, selected, cursor, activeNames, reloadLocal, onSkillsChanged]);
+  }, [
+    isLocalTab,
+    doLocalRemove,
+    currentSkills,
+    selected,
+    cursor,
+    activeNames,
+    reloadLocal,
+    onSkillsChanged,
+  ]);
 
   useKeyboard((key) => {
     if (!active) return;

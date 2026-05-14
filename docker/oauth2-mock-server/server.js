@@ -14,9 +14,10 @@ server.service.on("beforeUserinfo", (userInfoResponse, _req) => {
 const port = Number(process.env.PORT ?? 8080);
 const address = process.env.ADDRESS ?? "0.0.0.0";
 
-server.issuer.keys.generate("RS256").then(() =>
-  server.start(port, address)
-).then(() => {
-  console.log(`OAuth 2 server listening on http://${address}:${port}`);
-  console.log(`OAuth 2 issuer is http://localhost:${port}`);
-});
+server.issuer.keys
+  .generate("RS256")
+  .then(() => server.start(port, address))
+  .then(() => {
+    console.log(`OAuth 2 server listening on http://${address}:${port}`);
+    console.log(`OAuth 2 issuer is http://localhost:${port}`);
+  });
