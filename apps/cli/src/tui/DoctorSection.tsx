@@ -56,7 +56,7 @@ export function DoctorSection() {
           Doctor
         </text>
         {healthy ? (
-          <text fg="#4ade80">✓  All checks passed</text>
+          <text fg="#4ade80">✓ All checks passed</text>
         ) : (
           <text fg="#f87171">{`✗  ${result.issues.length} issue${result.issues.length !== 1 ? "s" : ""} found`}</text>
         )}

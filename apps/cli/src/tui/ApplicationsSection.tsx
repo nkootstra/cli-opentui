@@ -49,7 +49,9 @@ export function ApplicationsSection() {
     <box flexDirection="column" flexGrow={1} style={{ padding: 2 }}>
       {/* Header */}
       <box flexDirection="column" style={{ marginBottom: 1 }}>
-        <text fg="#a78bfa" attributes={1}>Applications</text>
+        <text fg="#a78bfa" attributes={1}>
+          Applications
+        </text>
         <text fg="#4b5563">{`${active.length} of ${apps.length} configured`}</text>
       </box>
 
@@ -72,12 +74,10 @@ export function ApplicationsSection() {
               alignItems="center"
               style={{ paddingTop: 1, paddingBottom: 1 }}
             >
-              <text fg={dot} style={{ paddingRight: 2 }}>●</text>
-              <text
-                fg="#e5e7eb"
-                attributes={app.status === "active" ? 1 : 0}
-                style={{ width: 14 }}
-              >
+              <text fg={dot} style={{ paddingRight: 2 }}>
+                ●
+              </text>
+              <text fg="#e5e7eb" attributes={app.status === "active" ? 1 : 0} style={{ width: 14 }}>
                 {app.name}
               </text>
               <text fg={skillColor} style={{ width: 16 }}>

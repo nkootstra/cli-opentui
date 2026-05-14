@@ -31,9 +31,7 @@ type SectionStatus =
   | { type: "busy"; current: number; total: number; message: string }
   | { type: "fatal"; message: string };
 
-async function loadAllSkills(
-  onRepo: (repo: string) => void,
-): Promise<RepoSkills[]> {
+async function loadAllSkills(onRepo: (repo: string) => void): Promise<RepoSkills[]> {
   const installed = await listInstalledSkills({ scope: "global" });
   const installedNames = new Set<string>(installed.map((s: InstalledSkill) => s.destinationName));
   const repos: RepoSkills[] = [];
@@ -186,34 +184,34 @@ export function SkillsSection({ active }: SkillsSectionProps) {
     if (status.type === "busy") return;
     if (status.type === "loading") return;
 
-      if (key.name === "]") {
-        setRepoIndex((i) => Math.min(repos.length - 1, i + 1));
-        setCursor(0);
-        setSelected(new Set());
-      } else if (key.name === "[") {
-        setRepoIndex((i) => Math.max(0, i - 1));
-        setCursor(0);
-        setSelected(new Set());
-      } else if (key.name === "up" || key.name === "k") {
-        setCursor((c) => Math.max(0, c - 1));
-      } else if (key.name === "down" || key.name === "j") {
-        setCursor((c) => Math.min(currentSkills.length - 1, c + 1));
-      } else if (key.name === "space") {
-        const skill = currentSkills[cursor];
-        if (!skill) return;
-        setSelected((prev) => {
-          const next = new Set(prev);
-          if (next.has(skill.name)) next.delete(skill.name);
-          else next.add(skill.name);
-          return next;
-        });
-      } else if (key.name === "return") {
-        void applyToggle();
-      } else if (key.name === "escape") {
-        setSelected(new Set());
-      } else if (key.name === "r") {
-        void reload();
-      }
+    if (key.name === "]") {
+      setRepoIndex((i) => Math.min(repos.length - 1, i + 1));
+      setCursor(0);
+      setSelected(new Set());
+    } else if (key.name === "[") {
+      setRepoIndex((i) => Math.max(0, i - 1));
+      setCursor(0);
+      setSelected(new Set());
+    } else if (key.name === "up" || key.name === "k") {
+      setCursor((c) => Math.max(0, c - 1));
+    } else if (key.name === "down" || key.name === "j") {
+      setCursor((c) => Math.min(currentSkills.length - 1, c + 1));
+    } else if (key.name === "space") {
+      const skill = currentSkills[cursor];
+      if (!skill) return;
+      setSelected((prev) => {
+        const next = new Set(prev);
+        if (next.has(skill.name)) next.delete(skill.name);
+        else next.add(skill.name);
+        return next;
+      });
+    } else if (key.name === "return") {
+      void applyToggle();
+    } else if (key.name === "escape") {
+      setSelected(new Set());
+    } else if (key.name === "r") {
+      void reload();
+    }
   });
 
   const isBusy = status.type === "busy";
@@ -238,7 +236,9 @@ export function SkillsSection({ active }: SkillsSectionProps) {
     return (
       <box flexGrow={1} alignItems="center" justifyContent="center">
         <box flexDirection="column" alignItems="center" style={{ gap: 1 }}>
-          <text fg="#f87171" attributes={1}>Failed to load skills</text>
+          <text fg="#f87171" attributes={1}>
+            Failed to load skills
+          </text>
           <text fg="#9ca3af">{status.message}</text>
           <text fg="#6b7280">Press r to retry</text>
         </box>
@@ -321,7 +321,9 @@ export function SkillsSection({ active }: SkillsSectionProps) {
           {focusedSkill ? (
             <>
               <box flexDirection="row" alignItems="center" style={{ marginBottom: 1 }}>
-                <text fg="#e5e7eb" attributes={1}>{focusedSkill.name}</text>
+                <text fg="#e5e7eb" attributes={1}>
+                  {focusedSkill.name}
+                </text>
                 <box style={{ marginLeft: 2 }}>
                   {focusedSkill.installed ? (
                     <text fg="#4ade80">● Installed</text>
@@ -339,7 +341,9 @@ export function SkillsSection({ active }: SkillsSectionProps) {
               {focusedSkill.description ? (
                 <text fg="#9ca3af">{focusedSkill.description}</text>
               ) : (
-                <text fg="#4b5563" attributes={2}>No description available.</text>
+                <text fg="#4b5563" attributes={2}>
+                  No description available.
+                </text>
               )}
 
               <box style={{ marginTop: 2 }}>

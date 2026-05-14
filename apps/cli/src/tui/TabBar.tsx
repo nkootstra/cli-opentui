@@ -27,11 +27,7 @@ export function TabBar({ tabs, activeIndex, hint, onTabClick }: TabBarProps) {
             style={{
               paddingLeft: 2,
               paddingRight: 2,
-              backgroundColor: isActive
-                ? "#1e1b4b"
-                : isHovered
-                  ? "#111827"
-                  : undefined,
+              backgroundColor: isActive ? "#1e1b4b" : isHovered ? "#111827" : undefined,
             }}
             onMouseDown={onTabClick ? () => onTabClick(i) : undefined}
             onMouseOver={onTabClick ? () => setHoveredIndex(i) : undefined}

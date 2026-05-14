@@ -840,11 +840,19 @@ export async function listApplications(): Promise<KnownApplication[]> {
     KNOWN_APPS.map(async (app) => {
       if (!(await pathExists(app.skillsDir))) {
         const parentExists = await pathExists(dirname(app.skillsDir));
-        return { ...app, status: parentExists ? "missing" : "not_configured", skillCount: 0 } as KnownApplication;
+        return {
+          ...app,
+          status: parentExists ? "missing" : "not_configured",
+          skillCount: 0,
+        } as KnownApplication;
       }
       const entries = await safeReadDir(app.skillsDir);
       const isDirs = await Promise.all(entries.map((e) => isDirectory(join(app.skillsDir, e))));
-      return { ...app, status: "active", skillCount: isDirs.filter(Boolean).length } as KnownApplication;
+      return {
+        ...app,
+        status: "active",
+        skillCount: isDirs.filter(Boolean).length,
+      } as KnownApplication;
     }),
   );
 }
