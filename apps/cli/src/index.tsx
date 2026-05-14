@@ -1,6 +1,3 @@
-import { createCliRenderer } from "@opentui/core";
-import { createRoot } from "@opentui/react";
-import { App } from "./app";
+import { runCliEntry } from "./main.tsx";
 
-const renderer = await createCliRenderer();
-createRoot(renderer).render(<App />);
+process.exitCode = await runCliEntry(process.argv.slice(2));
