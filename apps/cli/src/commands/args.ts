@@ -14,7 +14,13 @@ export type CliCommand =
     }
   | { command: "update"; yes: boolean; dryRun: boolean; json: boolean }
   | { command: "list"; json: boolean; scope: "local" | "global" | null }
-  | { command: "remove"; skill: string; yes: boolean; json: boolean; scope: "local" | "global" | null };
+  | {
+      command: "remove";
+      skill: string;
+      yes: boolean;
+      json: boolean;
+      scope: "local" | "global" | null;
+    };
 
 export function parseArgs(args: string[]): CliCommand {
   const [command, ...rest] = args;

@@ -7,10 +7,7 @@ export type ListDeps = {
   listInstalledSkills?: typeof listInstalledSkills;
 };
 
-export async function runListCommand(
-  command: ListCommand,
-  deps: ListDeps = {},
-): Promise<string> {
+export async function runListCommand(command: ListCommand, deps: ListDeps = {}): Promise<string> {
   const skills = await (deps.listInstalledSkills ?? listInstalledSkills)({
     scope: command.scope ?? undefined,
   });
