@@ -4,11 +4,15 @@ import { App } from "./app.tsx";
 import { parseArgs, type CliCommand } from "./commands/args.ts";
 import { runInstallCommand } from "./commands/install.ts";
 import { runUpdateCommand } from "./commands/update.ts";
+import { runListCommand } from "./commands/list.ts";
+import { runRemoveCommand } from "./commands/remove.ts";
 
 export type CliDeps = {
   startTui?: () => Promise<void>;
   runSkillsCommand?: (command: Extract<CliCommand, { command: "skills" }>) => Promise<string>;
   runUpdateCommand?: (command: Extract<CliCommand, { command: "update" }>) => Promise<string>;
+  runListCommand?: (command: Extract<CliCommand, { command: "list" }>) => Promise<string>;
+  runRemoveCommand?: (command: Extract<CliCommand, { command: "remove" }>) => Promise<string>;
 };
 
 export async function runCli(args: string[], deps: CliDeps = {}): Promise<string | null> {
@@ -18,7 +22,9 @@ export async function runCli(args: string[], deps: CliDeps = {}): Promise<string
     return null;
   }
   if (command.command === "skills") return (deps.runSkillsCommand ?? runInstallCommand)(command);
-  return (deps.runUpdateCommand ?? runUpdateCommand)(command);
+  if (command.command === "update") return (deps.runUpdateCommand ?? runUpdateCommand)(command);
+  if (command.command === "list") return (deps.runListCommand ?? runListCommand)(command);
+  return (deps.runRemoveCommand ?? runRemoveCommand)(command);
 }
 
 export async function runCliEntry(

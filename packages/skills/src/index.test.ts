@@ -7,8 +7,10 @@ import {
   fetchGitHubArchive,
   discoverSkills,
   installSkills,
+  listInstalledSkills,
   parseSourceSpec,
   readLockfile,
+  removeSkill,
   sanitizeForTerminal,
   updateSkills,
 } from "./index.ts";
@@ -480,5 +482,116 @@ describe("updates", () => {
 describe("terminal sanitization", () => {
   test("strips unsafe terminal control characters", () => {
     expect(sanitizeForTerminal("hello\u001b[31m\u0000 world")).toBe("hello world");
+  });
+});
+
+describe("listInstalledSkills", () => {
+  test("returns empty list when no lockfile present", async () => {
+    const tmp = await Bun.$`mktemp -d`.text().then((s) => s.trim());
+    const agentsHome = join(tmp, ".agents");
+    await mkdir(agentsHome, { recursive: true });
+    const skills = await listInstalledSkills({ claudeHome: agentsHome, scope: "global" });
+    expect(skills).toEqual([]);
+  });
+
+  test("returns global skills from lockfile", async () => {
+    const tmp = await Bun.$`mktemp -d`.text().then((s) => s.trim());
+    const agentsHome = join(tmp, ".agents");
+    await mkdir(agentsHome, { recursive: true });
+    await writeFile(
+      join(agentsHome, "skills-lock.json"),
+      JSON.stringify({
+        version: 1,
+        skills: {
+          foo: {
+            sourceHost: "github.com",
+            owner: "owner",
+            repo: "repo",
+            requestedRef: null,
+            resolvedCommit: null,
+            sourceSkillPath: "skills/foo",
+            displayName: "foo",
+            destinationName: "foo",
+            installedAt: "2026-05-13T00:00:00.000Z",
+          },
+        },
+      }),
+    );
+
+    const skills = await listInstalledSkills({ claudeHome: agentsHome, scope: "global" });
+    expect(skills).toHaveLength(1);
+    expect(skills[0]?.destinationName).toBe("foo");
+    expect(skills[0]?.scope).toBe("global");
+    expect(skills[0]?.source).toBe("github.com/owner/repo");
+  });
+});
+
+describe("removeSkill", () => {
+  test("removes skill directory, symlink, and lockfile entry", async () => {
+    const tmp = await Bun.$`mktemp -d`.text().then((s) => s.trim());
+    const agentsHome = join(tmp, ".agents");
+    const claudeHome = join(tmp, ".claude");
+    await mkdir(join(agentsHome, "skills", "foo"), { recursive: true });
+    await writeFile(join(agentsHome, "skills", "foo", "SKILL.md"), "# foo");
+    await mkdir(join(claudeHome, "skills"), { recursive: true });
+    await symlink("../../.agents/skills/foo", join(claudeHome, "skills", "foo"));
+    await writeFile(
+      join(agentsHome, "skills-lock.json"),
+      JSON.stringify({
+        version: 1,
+        skills: {
+          foo: {
+            sourceHost: "github.com",
+            owner: "owner",
+            repo: "repo",
+            requestedRef: null,
+            resolvedCommit: null,
+            sourceSkillPath: "skills/foo",
+            displayName: "foo",
+            destinationName: "foo",
+            installedAt: "2026-05-13T00:00:00.000Z",
+          },
+        },
+      }),
+    );
+
+    const result = await removeSkill("foo", {
+      claudeHome,
+      scope: "global",
+      projectRoot: tmp,
+    });
+
+    expect(result.removed).toBe("foo");
+
+    const lockfile = await readLockfile(agentsHome);
+    expect(Object.keys(lockfile.skills)).not.toContain("foo");
+
+    let skillDirExists = false;
+    try {
+      await lstat(join(agentsHome, "skills", "foo"));
+      skillDirExists = true;
+    } catch {
+      // expected
+    }
+    expect(skillDirExists).toBe(false);
+
+    let symlinkExists = false;
+    try {
+      await lstat(join(claudeHome, "skills", "foo"));
+      symlinkExists = true;
+    } catch {
+      // expected
+    }
+    expect(symlinkExists).toBe(false);
+  });
+
+  test("throws when skill is not in lockfile", async () => {
+    const tmp = await Bun.$`mktemp -d`.text().then((s) => s.trim());
+    const agentsHome = join(tmp, ".agents");
+    await mkdir(agentsHome, { recursive: true });
+
+    await expect(
+      removeSkill("missing", { claudeHome: agentsHome, scope: "global" }),
+    ).rejects.toThrow("not installed");
   });
 });

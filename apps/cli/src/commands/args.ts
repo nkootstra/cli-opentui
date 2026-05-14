@@ -12,18 +12,24 @@ export type CliCommand =
       json: boolean;
       scope: "local" | "global" | null;
     }
-  | { command: "update"; yes: boolean; dryRun: boolean; json: boolean };
+  | { command: "update"; yes: boolean; dryRun: boolean; json: boolean }
+  | { command: "list"; json: boolean; scope: "local" | "global" | null }
+  | { command: "remove"; skill: string; yes: boolean; json: boolean; scope: "local" | "global" | null };
 
 export function parseArgs(args: string[]): CliCommand {
   const [command, ...rest] = args;
   if (!command) return { command: "tui" };
   if (command === "skills") {
     if (rest[0] === "update") return parseUpdate(rest.slice(1));
+    if (rest[0] === "list" || rest[0] === "ls") return parseList(rest.slice(1));
+    if (rest[0] === "remove" || rest[0] === "rm") return parseRemove(rest.slice(1));
     return parseSkills(rest);
   }
   if (command === "update") return parseUpdate(rest);
+  if (command === "list" || command === "ls") return parseList(rest);
+  if (command === "remove" || command === "rm") return parseRemove(rest);
   throw new Error(
-    `Unknown command '${command}'. Usage: skills <source> [skill] [--skill <name>] [--all] [--list] [--yes] [--force] [--dry-run] | update [--yes] [--dry-run]`,
+    `Unknown command '${command}'. Usage: skills <source> [--skill <name>] [--all] [--list] [--yes] [--force] [--dry-run] | list [--local|--global] | remove <name> [--local|--global] [--yes] | update [--yes] [--dry-run]`,
   );
 }
 
@@ -79,4 +85,42 @@ function parseUpdate(args: string[]): Extract<CliCommand, { command: "update" }>
     else throw new Error(`Unknown update argument '${arg}'`);
   }
   return { command: "update", yes, dryRun, json };
+}
+
+function parseList(args: string[]): Extract<CliCommand, { command: "list" }> {
+  let json = false;
+  let scope: "local" | "global" | null = null;
+  for (const arg of args) {
+    if (arg === "--json") json = true;
+    else if (arg === "--local") {
+      if (scope === "global") throw new Error("Choose either --local or --global");
+      scope = "local";
+    } else if (arg === "--global" || arg === "-g") {
+      if (scope === "local") throw new Error("Choose either --local or --global");
+      scope = "global";
+    } else throw new Error(`Unknown list argument '${arg}'`);
+  }
+  return { command: "list", json, scope };
+}
+
+function parseRemove(args: string[]): Extract<CliCommand, { command: "remove" }> {
+  const mutableArgs = [...args];
+  const skill = mutableArgs.shift();
+  if (!skill || skill.startsWith("--"))
+    throw new Error("Usage: skills remove <name> [--local|--global] [--yes]");
+  let yes = false;
+  let json = false;
+  let scope: "local" | "global" | null = null;
+  for (const arg of mutableArgs) {
+    if (arg === "--yes" || arg === "-y") yes = true;
+    else if (arg === "--json") json = true;
+    else if (arg === "--local") {
+      if (scope === "global") throw new Error("Choose either --local or --global");
+      scope = "local";
+    } else if (arg === "--global" || arg === "-g") {
+      if (scope === "local") throw new Error("Choose either --local or --global");
+      scope = "global";
+    } else throw new Error(`Unknown remove argument '${arg}'`);
+  }
+  return { command: "remove", skill, yes, json, scope };
 }

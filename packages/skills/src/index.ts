@@ -583,6 +583,81 @@ async function pathExists(path: string): Promise<boolean> {
   }
 }
 
+export type InstalledSkill = {
+  destinationName: string;
+  displayName: string;
+  source: string;
+  requestedRef: string | null;
+  installedAt: string;
+  scope: InstallScope;
+};
+
+export async function listInstalledSkills(options: {
+  claudeHome?: string;
+  scope?: InstallScope;
+}): Promise<InstalledSkill[]> {
+  const results: InstalledSkill[] = [];
+
+  const scopes: InstallScope[] = options.scope ? [options.scope] : ["local", "global"];
+
+  for (const scope of scopes) {
+    const claudeHome =
+      scope === "global"
+        ? resolveClaudeHome(options.claudeHome)
+        : join(resolve(process.cwd()), ".agents");
+    const lockfile = await readLockfile(claudeHome);
+    for (const entry of Object.values(lockfile.skills)) {
+      results.push({
+        destinationName: entry.destinationName,
+        displayName: entry.displayName,
+        source: `${entry.sourceHost}/${entry.owner}/${entry.repo}`,
+        requestedRef: entry.requestedRef,
+        installedAt: entry.installedAt,
+        scope,
+      });
+    }
+  }
+
+  return results;
+}
+
+export async function removeSkill(
+  name: string,
+  options: {
+    claudeHome?: string;
+    scope?: InstallScope;
+    projectRoot?: string;
+  } = {},
+): Promise<{ removed: string; scope: InstallScope }> {
+  const scope = options.scope ?? "global";
+  const projectRoot = resolve(options.projectRoot ?? process.cwd());
+  const globalClaudeHome = resolveClaudeHome(options.claudeHome);
+  const agentsHome =
+    scope === "local" ? join(projectRoot, ".agents") : join(dirname(globalClaudeHome), ".agents");
+  const claudeSkillsHome = scope === "local" ? join(projectRoot, ".claude") : globalClaudeHome;
+
+  validateDestinationName(name);
+
+  const lockfile = await readLockfile(agentsHome);
+  if (!lockfile.skills[name]) {
+    throw new Error(`Skill '${name}' is not installed in ${scope} skills.`);
+  }
+
+  const agentsSkillPath = join(agentsHome, "skills", name);
+  const claudeSymlinkPath = join(claudeSkillsHome, "skills", name);
+
+  await rm(agentsSkillPath, { force: true, recursive: true });
+  if (await pathExists(claudeSymlinkPath)) {
+    const stats = await lstat(claudeSymlinkPath);
+    if (stats.isSymbolicLink()) await rm(claudeSymlinkPath, { force: true });
+  }
+
+  delete lockfile.skills[name];
+  await writeLockfile(agentsHome, lockfile);
+
+  return { removed: name, scope };
+}
+
 export async function extractArchivePlaceholder(): Promise<string> {
   return tmpdir();
 }

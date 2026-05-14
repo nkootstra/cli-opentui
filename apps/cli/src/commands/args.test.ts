@@ -94,6 +94,70 @@ describe("parseArgs", () => {
     });
   });
 
+  test("parses top-level list command", () => {
+    expect(parseArgs(["list"])).toEqual({ command: "list", json: false, scope: null });
+    expect(parseArgs(["ls"])).toEqual({ command: "list", json: false, scope: null });
+    expect(parseArgs(["list", "--global"])).toEqual({ command: "list", json: false, scope: "global" });
+    expect(parseArgs(["list", "--local"])).toEqual({ command: "list", json: false, scope: "local" });
+    expect(parseArgs(["list", "--json"])).toEqual({ command: "list", json: true, scope: null });
+  });
+
+  test("parses nested skills list command", () => {
+    expect(parseArgs(["skills", "list"])).toEqual({ command: "list", json: false, scope: null });
+    expect(parseArgs(["skills", "ls"])).toEqual({ command: "list", json: false, scope: null });
+    expect(parseArgs(["skills", "list", "--global"])).toEqual({ command: "list", json: false, scope: "global" });
+  });
+
+  test("parses top-level remove command", () => {
+    expect(parseArgs(["remove", "foo"])).toEqual({
+      command: "remove",
+      skill: "foo",
+      yes: false,
+      json: false,
+      scope: null,
+    });
+    expect(parseArgs(["rm", "foo", "--yes", "--global"])).toEqual({
+      command: "remove",
+      skill: "foo",
+      yes: true,
+      json: false,
+      scope: "global",
+    });
+    expect(parseArgs(["remove", "foo", "--local", "--json"])).toEqual({
+      command: "remove",
+      skill: "foo",
+      yes: false,
+      json: true,
+      scope: "local",
+    });
+  });
+
+  test("parses nested skills remove command", () => {
+    expect(parseArgs(["skills", "remove", "foo"])).toEqual({
+      command: "remove",
+      skill: "foo",
+      yes: false,
+      json: false,
+      scope: null,
+    });
+    expect(parseArgs(["skills", "rm", "foo", "--yes"])).toEqual({
+      command: "remove",
+      skill: "foo",
+      yes: true,
+      json: false,
+      scope: null,
+    });
+  });
+
+  test("rejects remove without a skill name", () => {
+    expect(() => parseArgs(["remove"])).toThrow("Usage");
+    expect(() => parseArgs(["remove", "--yes"])).toThrow("Usage");
+  });
+
+  test("rejects list with conflicting scope flags", () => {
+    expect(() => parseArgs(["list", "--local", "--global"])).toThrow("Choose either");
+  });
+
   test("rejects invalid commands and missing values", () => {
     expect(() => parseArgs(["skills"])).toThrow("Usage");
     expect(() => parseArgs(["skills", "owner/repo", "--skill"])).toThrow("Expected value");
