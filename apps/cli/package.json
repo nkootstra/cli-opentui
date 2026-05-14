@@ -1,6 +1,9 @@
 {
   "name": "@repo/cli",
   "private": true,
+  "bin": {
+    "cli": "dist/index.js"
+  },
   "type": "module",
   "module": "src/index.tsx",
   "scripts": {
@@ -14,6 +17,8 @@
     "@opentui/core": "^0.2.1",
     "@opentui/react": "^0.2.1",
     "@repo/skills": "workspace:*",
+    "oauth4webapi": "^3.8.6",
+    "open": "^11.0.0",
     "react": "^19.2.4"
   },
   "devDependencies": {

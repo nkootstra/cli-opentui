@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useKeyboard, useTerminalDimensions } from "@opentui/react";
+import type { ScrollBoxRenderable } from "@opentui/core";
 import {
   buildInstallPlan,
   discoverSkills,
@@ -14,12 +15,20 @@ import {
 import { SKILL_SOURCES } from "./sources.ts";
 import { TabBar } from "./TabBar.tsx";
 
+const LOCAL_TAB = "local" as const;
+
 type SkillEntry = DiscoveredSkill & {
   sourceSpec: string;
   installed: boolean;
 };
 
-// Skills grouped per repo source
+// A local-only entry — installed skills from ~/.agents/skills
+type LocalSkillEntry = {
+  name: string;
+  source: string;
+  installedAt: string;
+};
+
 type RepoSkills = {
   sourceSpec: string;
   skills: SkillEntry[];
@@ -51,7 +60,6 @@ async function loadAllSkills(onRepo: (repo: string) => void): Promise<RepoSkills
         })),
       });
     } catch {
-      // Push empty entry so the tab still shows
       repos.push({ sourceSpec, skills: [] });
     }
   }
@@ -61,23 +69,39 @@ async function loadAllSkills(onRepo: (repo: string) => void): Promise<RepoSkills
 
 type SkillsSectionProps = {
   active: boolean;
+  onSkillsChanged?: () => void;
 };
 
-export function SkillsSection({ active }: SkillsSectionProps) {
+export function SkillsSection({ active, onSkillsChanged }: SkillsSectionProps) {
   const { width } = useTerminalDimensions();
   const [repos, setRepos] = useState<RepoSkills[]>([]);
+  const [localSkills, setLocalSkills] = useState<LocalSkillEntry[]>([]);
+  // repoIndex 0 = Local tab, 1+ = remote repos
   const [repoIndex, setRepoIndex] = useState(0);
   const [cursor, setCursor] = useState(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [status, setStatus] = useState<SectionStatus>({
     type: "loading",
-    repo: SKILL_SOURCES[0] ?? "",
+    repo: "local",
   });
+  const scrollRef = useRef<ScrollBoxRenderable>(null);
+
+  const reloadLocal = useCallback(async () => {
+    const installed = await listInstalledSkills({ scope: "global" });
+    setLocalSkills(
+      installed.map((s) => ({
+        name: s.destinationName,
+        source: s.source,
+        installedAt: s.installedAt,
+      })),
+    );
+  }, []);
 
   const reload = useCallback(async () => {
     setSelected(new Set());
-    setStatus({ type: "loading", repo: SKILL_SOURCES[0] ?? "" });
+    setStatus({ type: "loading", repo: "local" });
     try {
+      await reloadLocal();
       const loaded = await loadAllSkills((repo) => setStatus({ type: "loading", repo }));
       setRepos(loaded);
       setRepoIndex(0);
@@ -86,13 +110,24 @@ export function SkillsSection({ active }: SkillsSectionProps) {
     } catch (err) {
       setStatus({ type: "fatal", message: err instanceof Error ? err.message : String(err) });
     }
-  }, []);
+  }, [reloadLocal]);
 
   useEffect(() => {
     void reload();
   }, [reload]);
 
-  const currentSkills = useMemo(() => repos[repoIndex]?.skills ?? [], [repos, repoIndex]);
+  const isLocalTab = repoIndex === 0;
+  // remote repos are offset by 1 (index 0 is Local)
+  const remoteRepo = repos[repoIndex - 1];
+  const currentSkills = useMemo(
+    () => (isLocalTab ? [] : (remoteRepo?.skills ?? [])),
+    [isLocalTab, remoteRepo],
+  );
+
+  // Keep cursor scrolled into view
+  useEffect(() => {
+    scrollRef.current?.scrollChildIntoView(`skill-${cursor}`);
+  }, [cursor]);
 
   const activeNames = useCallback(
     (skills: SkillEntry[], sel: Set<string>, cur: number): string[] => {
@@ -103,7 +138,28 @@ export function SkillsSection({ active }: SkillsSectionProps) {
     [],
   );
 
+  // Remove a local skill
+  const doLocalRemove = useCallback(async () => {
+    const skill = localSkills[cursor];
+    if (!skill) return;
+    setStatus({ type: "busy", current: 1, total: 1, message: `Uninstalling ${skill.name}…` });
+    try {
+      await removeSkill(skill.name, { scope: "global" });
+      await reloadLocal();
+      setCursor((c) => Math.max(0, c - 1));
+      setStatus({ type: "ready" });
+      onSkillsChanged?.();
+    } catch (err) {
+      setStatus({ type: "ready", notice: err instanceof Error ? err.message : String(err) });
+    }
+  }, [localSkills, cursor, reloadLocal, onSkillsChanged]);
+
   const applyToggle = useCallback(async () => {
+    if (isLocalTab) {
+      await doLocalRemove();
+      return;
+    }
+
     const names = activeNames(currentSkills, selected, cursor);
     if (names.length === 0) return;
 
@@ -149,6 +205,7 @@ export function SkillsSection({ active }: SkillsSectionProps) {
               ),
             })),
           );
+          await reloadLocal();
         } catch (err) {
           errors.push(err instanceof Error ? err.message : String(err));
         }
@@ -165,6 +222,7 @@ export function SkillsSection({ active }: SkillsSectionProps) {
               skills: r.skills.map((s) => (s.name === name ? { ...s, installed: false } : s)),
             })),
           );
+          await reloadLocal();
         } catch (err) {
           errors.push(err instanceof Error ? err.message : String(err));
         }
@@ -173,19 +231,32 @@ export function SkillsSection({ active }: SkillsSectionProps) {
 
       setSelected(new Set());
       setStatus({ type: "ready", notice: errors.length > 0 ? errors.join("  ·  ") : undefined });
+      onSkillsChanged?.();
     } catch (err) {
       setSelected(new Set());
       setStatus({ type: "ready", notice: err instanceof Error ? err.message : String(err) });
     }
-  }, [currentSkills, selected, cursor, activeNames]);
+  }, [
+    isLocalTab,
+    doLocalRemove,
+    currentSkills,
+    selected,
+    cursor,
+    activeNames,
+    reloadLocal,
+    onSkillsChanged,
+  ]);
 
   useKeyboard((key) => {
     if (!active) return;
     if (status.type === "busy") return;
     if (status.type === "loading") return;
 
+    const tabCount = repos.length + 1; // +1 for Local
+    const listLength = isLocalTab ? localSkills.length : currentSkills.length;
+
     if (key.name === "]") {
-      setRepoIndex((i) => Math.min(repos.length - 1, i + 1));
+      setRepoIndex((i) => Math.min(tabCount - 1, i + 1));
       setCursor(0);
       setSelected(new Set());
     } else if (key.name === "[") {
@@ -195,8 +266,8 @@ export function SkillsSection({ active }: SkillsSectionProps) {
     } else if (key.name === "up" || key.name === "k") {
       setCursor((c) => Math.max(0, c - 1));
     } else if (key.name === "down" || key.name === "j") {
-      setCursor((c) => Math.min(currentSkills.length - 1, c + 1));
-    } else if (key.name === "space") {
+      setCursor((c) => Math.min(listLength - 1, c + 1));
+    } else if (key.name === "space" && !isLocalTab) {
       const skill = currentSkills[cursor];
       if (!skill) return;
       setSelected((prev) => {
@@ -216,11 +287,13 @@ export function SkillsSection({ active }: SkillsSectionProps) {
 
   const isBusy = status.type === "busy";
   const notice = status.type === "ready" ? status.notice : undefined;
-  const focusedSkill = currentSkills[cursor];
   const listWidth = Math.min(34, Math.floor(width * 0.35));
-  const repoTabNames = repos.map((r) => r.sourceSpec);
+  // 2 chars for badge/checkmark + 1 padding each side = 4 chars overhead
+  const nameWidth = listWidth - 4;
 
-  // ── Loading splash ───────────────────────────────────────────────────────
+  const tabNames = [LOCAL_TAB, ...repos.map((r) => r.sourceSpec)];
+
+  // ── Loading splash ──────────────────────────────────────────────────────
   if (status.type === "loading") {
     return (
       <box flexGrow={1} alignItems="center" justifyContent="center">
@@ -247,15 +320,21 @@ export function SkillsSection({ active }: SkillsSectionProps) {
   }
 
   const activeCount = selected.size;
+  const focusedRemoteSkill = isLocalTab ? undefined : currentSkills[cursor];
+  const focusedLocalSkill = isLocalTab ? localSkills[cursor] : undefined;
 
   return (
     <box flexDirection="column" flexGrow={1}>
       {/* ── Repo tabs ── */}
       <TabBar
-        tabs={repoTabNames}
+        tabs={tabNames}
         activeIndex={repoIndex}
-        hint={repos.length > 1 ? "[ ] switch repo" : undefined}
-        onTabClick={(i) => setRepoIndex(i)}
+        hint={tabNames.length > 1 ? "[ ] switch repo" : undefined}
+        onTabClick={(i) => {
+          setRepoIndex(i);
+          setCursor(0);
+          setSelected(new Set());
+        }}
       />
 
       {/* ── Status bar ── */}
@@ -269,7 +348,7 @@ export function SkillsSection({ active }: SkillsSectionProps) {
           <text fg="#f87171">{`✗  ${notice}`}</text>
         </box>
       )}
-      {!isBusy && !notice && activeCount > 0 && (
+      {!isBusy && !notice && !isLocalTab && activeCount > 0 && (
         <box style={{ paddingLeft: 2, paddingTop: 1, paddingBottom: 1 }}>
           <text fg="#fbbf24">{`${activeCount} skill${activeCount === 1 ? "" : "s"} selected  ·  Enter to apply`}</text>
         </box>
@@ -278,68 +357,136 @@ export function SkillsSection({ active }: SkillsSectionProps) {
       {/* ── Two-pane area ── */}
       <box flexDirection="row" flexGrow={1}>
         {/* Left: skill list */}
-        <box flexDirection="column" width={listWidth} style={{ border: true, paddingTop: 1 }}>
-          {currentSkills.length === 0 && (
-            <box style={{ paddingLeft: 2 }}>
-              <text fg="#6b7280">No skills found.</text>
-            </box>
-          )}
-          {currentSkills.map((skill, index) => {
-            const isCursor = index === cursor;
-            const isMarked = selected.has(skill.name);
-            const badge = isMarked ? "◆ " : skill.installed ? "✓ " : "  ";
-            const badgeColor = isMarked ? "#fbbf24" : skill.installed ? "#4ade80" : "#374151";
-            const nameFg = isCursor
-              ? "#ffffff"
-              : isMarked
-                ? "#fef08a"
-                : skill.installed
-                  ? "#86efac"
-                  : "#d1d5db";
-            return (
-              <box
-                key={skill.name}
-                flexDirection="row"
-                alignItems="center"
-                style={{
-                  paddingLeft: 1,
-                  paddingRight: 1,
-                  backgroundColor: isCursor ? "#312e81" : undefined,
-                }}
-              >
-                <text fg={badgeColor}>{badge}</text>
-                <text fg={nameFg} attributes={isCursor ? 1 : 0}>
-                  {skill.name}
-                </text>
+        <scrollbox
+          ref={scrollRef}
+          scrollY
+          width={listWidth}
+          style={{ border: true, paddingTop: 1 }}
+        >
+          {isLocalTab ? (
+            localSkills.length === 0 ? (
+              <box style={{ paddingLeft: 2 }}>
+                <text fg="#6b7280">No skills installed.</text>
               </box>
-            );
-          })}
-        </box>
+            ) : (
+              localSkills.map((skill, index) => {
+                const isCursor = index === cursor;
+                const truncated =
+                  skill.name.length > nameWidth
+                    ? skill.name.slice(0, nameWidth - 1) + "…"
+                    : skill.name;
+                return (
+                  <box
+                    key={skill.name}
+                    id={`skill-${index}`}
+                    flexDirection="row"
+                    alignItems="center"
+                    style={{
+                      paddingLeft: 1,
+                      paddingRight: 1,
+                      backgroundColor: isCursor ? "#3a1a00" : undefined,
+                    }}
+                  >
+                    <text fg="#4ade80">{"✓ "}</text>
+                    <text fg={isCursor ? "#ffffff" : "#86efac"} attributes={isCursor ? 1 : 0}>
+                      {truncated}
+                    </text>
+                  </box>
+                );
+              })
+            )
+          ) : (
+            <>
+              {currentSkills.length === 0 && (
+                <box style={{ paddingLeft: 2 }}>
+                  <text fg="#6b7280">No skills found.</text>
+                </box>
+              )}
+              {currentSkills.map((skill, index) => {
+                const isCursor = index === cursor;
+                const isMarked = selected.has(skill.name);
+                const badge = isMarked ? "◆ " : skill.installed ? "✓ " : "  ";
+                const badgeColor = isMarked ? "#fbbf24" : skill.installed ? "#4ade80" : "#374151";
+                const nameFg = isCursor
+                  ? "#ffffff"
+                  : isMarked
+                    ? "#fef08a"
+                    : skill.installed
+                      ? "#86efac"
+                      : "#d1d5db";
+                const truncated =
+                  skill.name.length > nameWidth
+                    ? skill.name.slice(0, nameWidth - 1) + "…"
+                    : skill.name;
+                return (
+                  <box
+                    key={skill.name}
+                    id={`skill-${index}`}
+                    flexDirection="row"
+                    alignItems="center"
+                    style={{
+                      paddingLeft: 1,
+                      paddingRight: 1,
+                      backgroundColor: isCursor ? "#3a1a00" : undefined,
+                    }}
+                  >
+                    <text fg={badgeColor}>{badge}</text>
+                    <text fg={nameFg} attributes={isCursor ? 1 : 0}>
+                      {truncated}
+                    </text>
+                  </box>
+                );
+              })}
+            </>
+          )}
+        </scrollbox>
 
         {/* Right: detail panel */}
         <box flexDirection="column" flexGrow={1} style={{ padding: 2 }}>
-          {focusedSkill ? (
+          {isLocalTab ? (
+            focusedLocalSkill ? (
+              <>
+                <box flexDirection="row" alignItems="center" style={{ marginBottom: 1 }}>
+                  <text fg="#e5e7eb" attributes={1}>
+                    {focusedLocalSkill.name}
+                  </text>
+                  <box style={{ marginLeft: 2 }}>
+                    <text fg="#4ade80">● Installed</text>
+                  </box>
+                </box>
+                <text fg="#6b7280">{`Source: ${focusedLocalSkill.source}`}</text>
+                {focusedLocalSkill.installedAt !== "unknown" && (
+                  <text fg="#4b5563">{`Installed: ${focusedLocalSkill.installedAt.slice(0, 10)}`}</text>
+                )}
+                <box style={{ marginTop: 2 }}>
+                  <text fg="#f87171">Press Enter to uninstall</text>
+                </box>
+              </>
+            ) : (
+              <text fg="#4b5563">No skills installed.</text>
+            )
+          ) : focusedRemoteSkill ? (
             <>
               <box flexDirection="row" alignItems="center" style={{ marginBottom: 1 }}>
                 <text fg="#e5e7eb" attributes={1}>
-                  {focusedSkill.name}
+                  {focusedRemoteSkill.name}
                 </text>
                 <box style={{ marginLeft: 2 }}>
-                  {focusedSkill.installed ? (
+                  {focusedRemoteSkill.installed ? (
                     <text fg="#4ade80">● Installed</text>
                   ) : (
                     <text fg="#6b7280">○ Not installed</text>
                   )}
                 </box>
-                {selected.has(focusedSkill.name) && (
+                {selected.has(focusedRemoteSkill.name) && (
                   <box style={{ marginLeft: 2 }}>
                     <text fg="#fbbf24">◆ Selected</text>
                   </box>
                 )}
               </box>
 
-              {focusedSkill.description ? (
-                <text fg="#9ca3af">{focusedSkill.description}</text>
+              {focusedRemoteSkill.description ? (
+                <text fg="#9ca3af">{focusedRemoteSkill.description}</text>
               ) : (
                 <text fg="#4b5563" attributes={2}>
                   No description available.
@@ -349,7 +496,7 @@ export function SkillsSection({ active }: SkillsSectionProps) {
               <box style={{ marginTop: 2 }}>
                 {activeCount > 1 ? (
                   <text fg="#fbbf24">{`Press Enter to apply ${activeCount} changes`}</text>
-                ) : focusedSkill.installed ? (
+                ) : focusedRemoteSkill.installed ? (
                   <text fg="#f87171">Press Enter to uninstall</text>
                 ) : (
                   <text fg="#4ade80">Press Enter to install</text>

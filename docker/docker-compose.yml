@@ -1,0 +1,8 @@
+services:
+  oauth2-mock:
+    build:
+      context: ./oauth2-mock-server
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    restart: unless-stopped

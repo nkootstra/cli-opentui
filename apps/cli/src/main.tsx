@@ -6,6 +6,9 @@ import { runInstallCommand } from "./commands/install.ts";
 import { runUpdateCommand } from "./commands/update.ts";
 import { runListCommand } from "./commands/list.ts";
 import { runRemoveCommand } from "./commands/remove.ts";
+import { runLoginCommand } from "./commands/login.ts";
+import { runLogoutCommand } from "./commands/logout.ts";
+import { runWhoamiCommand } from "./commands/whoami.ts";
 
 export type CliDeps = {
   startTui?: () => Promise<void>;
@@ -13,6 +16,11 @@ export type CliDeps = {
   runUpdateCommand?: (command: Extract<CliCommand, { command: "update" }>) => Promise<string>;
   runListCommand?: (command: Extract<CliCommand, { command: "list" }>) => Promise<string>;
   runRemoveCommand?: (command: Extract<CliCommand, { command: "remove" }>) => Promise<string>;
+  runLoginCommand?: (command: Extract<CliCommand, { command: "login" }>) => Promise<string>;
+  runLogoutCommand?: (command: Extract<CliCommand, { command: "logout" }>) => Promise<string>;
+  runWhoamiCommand?: (
+    command: Extract<CliCommand, { command: "whoami" }>,
+  ) => Promise<{ kind: string; message: string }>;
 };
 
 export async function runCli(args: string[], deps: CliDeps = {}): Promise<string | null> {
@@ -24,6 +32,16 @@ export async function runCli(args: string[], deps: CliDeps = {}): Promise<string
   if (command.command === "skills") return (deps.runSkillsCommand ?? runInstallCommand)(command);
   if (command.command === "update") return (deps.runUpdateCommand ?? runUpdateCommand)(command);
   if (command.command === "list") return (deps.runListCommand ?? runListCommand)(command);
+  if (command.command === "login") return (deps.runLoginCommand ?? runLoginCommand)(command);
+  if (command.command === "logout") return (deps.runLogoutCommand ?? runLogoutCommand)(command);
+  if (command.command === "whoami") {
+    const doWhoami = deps.runWhoamiCommand ?? runWhoamiCommand;
+    const result = await doWhoami(command);
+    if (result.kind === "not-authenticated") {
+      throw new Error(result.message);
+    }
+    return result.message;
+  }
   return (deps.runRemoveCommand ?? runRemoveCommand)(command);
 }
 

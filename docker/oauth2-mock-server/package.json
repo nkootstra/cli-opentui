@@ -1,0 +1,7 @@
+{
+  "name": "oauth2-mock-server-wrapper",
+  "private": true,
+  "dependencies": {
+    "oauth2-mock-server": "^7.0.0"
+  }
+}

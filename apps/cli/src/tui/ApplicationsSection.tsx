@@ -12,10 +12,11 @@ const STATUS_COLOR: Record<string, string> = {
   not_configured: "#4b5563",
 };
 
-export function ApplicationsSection() {
+export function ApplicationsSection({ refreshKey = 0 }: { refreshKey?: number }) {
   const [state, setState] = useState<LoadState>({ status: "loading" });
 
   useEffect(() => {
+    setState({ status: "loading" });
     listApplications()
       .then((apps) => setState({ status: "done", apps }))
       .catch((err: unknown) =>
@@ -24,7 +25,7 @@ export function ApplicationsSection() {
           message: err instanceof Error ? err.message : String(err),
         }),
       );
-  }, []);
+  }, [refreshKey]);
 
   if (state.status === "loading") {
     return (
@@ -49,7 +50,7 @@ export function ApplicationsSection() {
     <box flexDirection="column" flexGrow={1} style={{ padding: 2 }}>
       {/* Header */}
       <box flexDirection="column" style={{ marginBottom: 1 }}>
-        <text fg="#a78bfa" attributes={1}>
+        <text fg="#ff8000" attributes={1}>
           Applications
         </text>
         <text fg="#4b5563">{`${active.length} of ${apps.length} configured`}</text>

@@ -824,6 +824,11 @@ export type KnownApplication = {
 
 const KNOWN_APPS: Array<{ name: string; description: string; skillsDir: string }> = [
   {
+    name: "Agents",
+    description: "Global agent skills (~/.agents/skills)",
+    skillsDir: join(homedir(), ".agents", "skills"),
+  },
+  {
     name: "OpenCode",
     description: "AI coding agent (opencode.ai)",
     skillsDir: join(homedir(), ".config", "opencode", "skills"),
