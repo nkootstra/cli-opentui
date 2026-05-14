@@ -20,7 +20,10 @@ export type CliCommand =
       yes: boolean;
       json: boolean;
       scope: "local" | "global" | null;
-    };
+    }
+  | { command: "login" }
+  | { command: "logout" }
+  | { command: "whoami" };
 
 export function parseArgs(args: string[]): CliCommand {
   const [command, ...rest] = args;
@@ -34,6 +37,9 @@ export function parseArgs(args: string[]): CliCommand {
   if (command === "update") return parseUpdate(rest);
   if (command === "list" || command === "ls") return parseList(rest);
   if (command === "remove" || command === "rm") return parseRemove(rest);
+  if (command === "login") return { command: "login" };
+  if (command === "logout") return { command: "logout" };
+  if (command === "whoami") return { command: "whoami" };
   throw new Error(
     `Unknown command '${command}'. Usage: skills <source> [--skill <name>] [--all] [--list] [--yes] [--force] [--dry-run] | list [--local|--global] | remove <name> [--local|--global] [--yes] | update [--yes] [--dry-run]`,
   );
